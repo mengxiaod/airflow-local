@@ -1,6 +1,10 @@
 # Airflow Local — Project Explained
 
-## Why No Dockerfile?
+## Project1: hello_world
+
+- dockerfile, docck-compose, containers, DAG 
+
+### Why No Dockerfile?
 
 Because the compose file uses the **official pre-built image** from Docker Hub:
 
@@ -12,7 +16,7 @@ Apache publishes a ready-made image with Airflow already installed. You only nee
 
 ---
 
-## The 8 Containers Defined
+### The 8 Containers Defined
 
 The compose file spins up **8 services** (containers), all running the same `apache/airflow:3.2.2` image but with different roles:
 
@@ -64,7 +68,7 @@ The compose file spins up **8 services** (containers), all running the same `apa
 
 ---
 
-## How the Shared Config Block (`x-airflow-common`) Works
+### How the Shared Config Block (`x-airflow-common`) Works
 
 Lines 47-90 of `docker-compose.yaml` define a **YAML anchor** (`&airflow-common`) that is reused by every Airflow container via `<<: *airflow-common`. This avoids repeating the same environment variables, volumes, and dependencies 6 times.
 
@@ -82,7 +86,7 @@ volumes:
 
 ---
 
-## How DAG Files Get Into Containers (Bind Mount)
+### How DAG Files Get Into Containers (Bind Mount)
 
 `hello_world.py` is **never mentioned by name** in `docker-compose.yaml` and is **never copied** into the containers. The relevant line is:
 
@@ -105,7 +109,7 @@ Because `x-airflow-common` is applied to all Airflow services via `<<: *airflow-
 
 ---
 
-## How `hello_world.py` Gets Triggered to Run
+### How `hello_world.py` Gets Triggered to Run
 
 ### Step 1: Always Happens First — DAG Registration
 
@@ -115,7 +119,7 @@ After this, Airflow "knows about" `hello_world` — but it hasn't run anything y
 
 ---
 
-### Path A: Scheduler Triggers It Automatically
+#### Path A: Scheduler Triggers It Automatically
 
 ```
 hello_world.py has schedule="@daily"
@@ -139,7 +143,7 @@ worker writes results back to postgres + ./logs/
 
 ---
 
-### Path B: You Manually Trigger It from the Web UI
+#### Path B: You Manually Trigger It from the Web UI
 
 ```
 You click "Trigger DAG" at localhost:8080
@@ -175,7 +179,7 @@ The worker is the only container that actually **runs your Python code**. The sc
 
 ---
 
-## How `hello_world.py` Gets Executed (Full Chain)
+### How `hello_world.py` Gets Executed (Full Chain)
 
 This is the key chain:
 
@@ -208,7 +212,7 @@ airflow-apiserver → you see "success" in the Web UI at localhost:8080
 
 ---
 
-## Startup Order (Dependency Chain)
+### Startup Order (Dependency Chain)
 
 The `depends_on` blocks enforce this order:
 
@@ -221,3 +225,17 @@ apiserver + scheduler + dag-processor + worker + triggerer (all start)
 ```
 
 None of the Airflow services start until `airflow-init` finishes creating the database schema and admin user.
+
+## Project2: spotify_etl_orchestration
+
+A daily Airflow DAG (`spotify_lambda_trigger`) that orchestrates a three-stage Spotify ETL pipeline on AWS.
+
+**Pipeline stages:**
+
+1. **Extract** — Invokes the `spotify_api_data_extract` Lambda function (us-east-1) to pull raw data from the Spotify API and land it in S3.
+2. **Sense** — Polls the S3 raw-data prefix (`raw_data/to_processed/`) every 60 seconds (up to 1 hour) using `S3KeySensor`, blocking until the file appears.
+3. **Transform** — Triggers the `spotify_transformation_job` Glue job, which runs a PySpark transformation script stored in S3 under the `aws-glue-assets` bucket, using the `spotify_glue_iam_role`.
+
+```
+trigger_extract_lambda >> check_s3 >> trigger_glue
+```
